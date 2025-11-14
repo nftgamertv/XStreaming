@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Relay Test - Streamer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .container {
+            background: #2a2a2a;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #4CAF50;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #aaa;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            background: #1a1a1a;
+            border: 1px solid #444;
+            color: #fff;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .danger {
+            background: #f44336;
+        }
+        .danger:hover {
+            background: #da190b;
+        }
+        video {
+            width: 100%;
+            max-width: 640px;
+            background: #000;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            background: #1a1a1a;
+            border-left: 4px solid #4CAF50;
+            border-radius: 5px;
+        }
+        .error {
+            border-left-color: #f44336;
+        }
+        .info {
+            background: #1e3a5f;
+            border-left-color: #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .viewer-url {
+            background: #1a1a1a;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 5px;
+            word-break: break-all;
+            font-family: monospace;
+        }
+        code {
+            background: #1a1a1a;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .log {
+            background: #1a1a1a;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+        }
+        .log-info { color: #2196F3; }
+        .log-success { color: #4CAF50; }
+        .log-error { color: #f44336; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 WebRTC Relay Test - Streamer</h1>
+
+        <div class="info">
+            <strong>📝 Instructions:</strong>
+            <ol>
+                <li>Enter your Cloudflare Worker URL below</li>
+                <li>Select a video source (webcam, screen, or test pattern)</li>
+                <li>Click "Start Streaming"</li>
+                <li>Copy the Viewer URL and open it in another tab/browser</li>
+            </ol>
+        </div>
+
+        <div class="input-group">
+            <label for="workerUrl">Cloudflare Worker URL:</label>
+            <input
+                type="text"
+                id="workerUrl"
+                placeholder="https://xbox-relay-server.your-subdomain.workers.dev"
+                value="https://xbox-relay-server.your-subdomain.workers.dev"
+            >
+        </div>
+
+        <div class="input-group">
+            <label for="videoSource">Video Source:</label>
+            <select id="videoSource">
+                <option value="webcam">Webcam (if available)</option>
+                <option value="screen">Screen Share</option>
+                <option value="canvas">Test Pattern (Generated)</option>
+            </select>
+        </div>
+
+        <button id="startBtn" onclick="startStreaming()">▶️ Start Streaming</button>
+        <button id="stopBtn" onclick="stopStreaming()" disabled class="danger">⏹️ Stop Streaming</button>
+
+        <video id="localVideo" autoplay muted playsinline></video>
+
+        <div id="status" class="status" style="display: none;"></div>
+
+        <div id="viewerInfo" style="display: none;" class="info">
+            <strong>👀 Share this URL with viewers:</strong>
+            <div class="viewer-url" id="viewerUrl"></div>
+            <button onclick="copyViewerUrl()">📋 Copy URL</button>
+        </div>
+
+        <div class="log" id="logContainer"></div>
+    </div>
+
+    <script>
+        let pc = null;
+        let localStream = null;
+        let streamerId = null;
+        let canvasStream = null;
+        let animationId = null;
+
+        function log(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            console.log(message);
+        }
+
+        function showStatus(message, isError = false) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = isError ? 'status error' : 'status';
+            status.style.display = 'block';
+        }
+
+        async function getVideoStream(source) {
+            log(`Getting video stream: ${source}`, 'info');
+
+            if (source === 'webcam') {
+                try {
+                    return await navigator.mediaDevices.getUserMedia({
+                        video: { width: 1280, height: 720 },
+                        audio: true
+                    });
+                } catch (e) {
+                    log(`Webcam not available: ${e.message}`, 'error');
+                    log('Falling back to test pattern', 'info');
+                    return getCanvasStream();
+                }
+            } else if (source === 'screen') {
+                try {
+                    return await navigator.mediaDevices.getDisplayMedia({
+                        video: { width: 1280, height: 720 },
+                        audio: true
+                    });
+                } catch (e) {
+                    log(`Screen share not available: ${e.message}`, 'error');
+                    log('Falling back to test pattern', 'info');
+                    return getCanvasStream();
+                }
+            } else {
+                return getCanvasStream();
+            }
+        }
+
+        function getCanvasStream() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1280;
+            canvas.height = 720;
+            const ctx = canvas.getContext('2d');
+
+            let hue = 0;
+            function drawTestPattern() {
+                // Create animated test pattern
+                hue = (hue + 1) % 360;
+
+                // Background gradient
+                const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+                gradient.addColorStop(0, `hsl(${hue}, 70%, 50%)`);
+                gradient.addColorStop(1, `hsl(${(hue + 60) % 360}, 70%, 30%)`);
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Moving circle
+                const time = Date.now() / 1000;
+                const x = canvas.width / 2 + Math.cos(time) * 200;
+                const y = canvas.height / 2 + Math.sin(time) * 200;
+
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(x, y, 50, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Text overlay
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 48px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('🎮 Xbox Relay Test Stream', canvas.width / 2, 100);
+
+                ctx.font = '32px Arial';
+                ctx.fillText(new Date().toLocaleTimeString(), canvas.width / 2, canvas.height - 50);
+
+                animationId = requestAnimationFrame(drawTestPattern);
+            }
+
+            drawTestPattern();
+
+            // Get stream from canvas
+            canvasStream = canvas.captureStream(30); // 30 FPS
+
+            // Add silent audio track (required for WebRTC)
+            const audioContext = new AudioContext();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            gainNode.gain.value = 0.01; // Very quiet
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            const audioDestination = audioContext.createMediaStreamDestination();
+            oscillator.connect(audioDestination);
+            oscillator.start();
+
+            canvasStream.addTrack(audioDestination.stream.getAudioTracks()[0]);
+
+            return canvasStream;
+        }
+
+        async function startStreaming() {
+            try {
+                const workerUrl = document.getElementById('workerUrl').value.trim();
+                if (!workerUrl) {
+                    showStatus('Please enter Worker URL', true);
+                    return;
+                }
+
+                log('Starting streaming...', 'info');
+                document.getElementById('startBtn').disabled = true;
+
+                // Step 1: Register as streamer
+                log('Registering with relay server...', 'info');
+                const registerResponse = await fetch(`${workerUrl}/streamer/new`, {
+                    method: 'POST'
+                });
+                const registerData = await registerResponse.json();
+                streamerId = registerData.streamerId;
+                log(`Registered as streamer: ${streamerId}`, 'success');
+
+                // Step 2: Get video stream
+                const videoSource = document.getElementById('videoSource').value;
+                localStream = await getVideoStream(videoSource);
+                document.getElementById('localVideo').srcObject = localStream;
+                log('Video stream acquired', 'success');
+
+                // Step 3: Create peer connection
+                pc = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                });
+
+                // Add tracks to peer connection
+                localStream.getTracks().forEach(track => {
+                    pc.addTrack(track, localStream);
+                    log(`Added ${track.kind} track`, 'info');
+                });
+
+                // Handle connection state
+                pc.onconnectionstatechange = () => {
+                    log(`Connection state: ${pc.connectionState}`, 'info');
+                    if (pc.connectionState === 'connected') {
+                        showStatus('✅ Connected to relay server!');
+                        document.getElementById('stopBtn').disabled = false;
+
+                        // Show viewer URL
+                        const viewerUrl = `${workerUrl}/viewer/join?streamerId=${streamerId}`;
+                        document.getElementById('viewerUrl').textContent = viewerUrl;
+                        document.getElementById('viewerInfo').style.display = 'block';
+                    } else if (pc.connectionState === 'failed') {
+                        showStatus('❌ Connection failed', true);
+                    }
+                };
+
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        log(`ICE candidate generated`, 'info');
+                    }
+                };
+
+                // Step 4: Create and send offer
+                log('Creating WebRTC offer...', 'info');
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                // Step 5: Send offer to relay server
+                log('Sending offer to relay server...', 'info');
+                const offerResponse = await fetch(`${workerUrl}/streamer/${streamerId}/offer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: offer.type,
+                        sdp: offer.sdp
+                    })
+                });
+
+                const offerData = await offerResponse.json();
+                log(`Received answer from relay server`, 'success');
+
+                // Step 6: Set remote description
+                await pc.setRemoteDescription({
+                    type: 'answer',
+                    sdp: offerData.sdp
+                });
+
+                log('WebRTC handshake complete!', 'success');
+                showStatus('🎉 Streaming started! Share the viewer URL below.');
+
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showStatus(`Error: ${error.message}`, true);
+                document.getElementById('startBtn').disabled = false;
+                stopStreaming();
+            }
+        }
+
+        function stopStreaming() {
+            log('Stopping stream...', 'info');
+
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+
+            if (pc) {
+                pc.close();
+                pc = null;
+            }
+
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+
+            document.getElementById('localVideo').srcObject = null;
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('viewerInfo').style.display = 'none';
+
+            showStatus('Stream stopped');
+            log('Stream stopped', 'info');
+        }
+
+        function copyViewerUrl() {
+            const url = document.getElementById('viewerUrl').textContent;
+            navigator.clipboard.writeText(url).then(() => {
+                showStatus('✅ Viewer URL copied to clipboard!');
+                setTimeout(() => showStatus('🎉 Streaming...'), 2000);
+            });
+        }
+
+        // Initialize
+        log('Test streamer ready', 'success');
+        log('Configure your Worker URL and start streaming', 'info');
+    </script>
+</body>
+</html>
