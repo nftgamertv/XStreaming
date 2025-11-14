@@ -31,6 +31,7 @@ import xcloud from '../common/settings/xcloud';
 import xhome from '../common/settings/xhome';
 import sensor from '../common/settings/sensor';
 import server from '../common/settings/server';
+import relay from '../common/settings/relay';
 import others from '../common/settings/others';
 
 import pkg from '../../package.json';
@@ -374,6 +375,25 @@ function SettingsScreen({navigation}) {
             description={t('Custom TURN server')}
             onPress={() => navigation.navigate('Server')}
           />
+        </View>
+
+        <View>
+          <View style={styles.contentTitle}>
+            <Text variant="titleLarge" style={styles.titleText}>
+              📡 Relay Server Settings
+            </Text>
+          </View>
+
+          {relay.map((meta, idx) => {
+            return (
+              <SettingItem
+                key={meta.name || idx}
+                title={meta.title}
+                description={meta.description}
+                onPress={() => handleItemPress(meta.name)}
+              />
+            );
+          })}
         </View>
 
         <View>

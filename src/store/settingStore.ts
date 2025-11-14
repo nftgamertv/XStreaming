@@ -66,6 +66,9 @@ export type Settings = {
   show_menu: boolean;
   fsr: boolean;
   debug: boolean;
+  relay_enabled: boolean;
+  relay_server_url: string;
+  relay_stun_servers: string;
 };
 
 const defaultSettings: Settings = {
@@ -133,6 +136,9 @@ const defaultSettings: Settings = {
   show_menu: false,
   fsr: false,
   debug: false,
+  relay_enabled: false,
+  relay_server_url: '',
+  relay_stun_servers: '',
 };
 
 export const saveSettings = (settings: Settings) => {

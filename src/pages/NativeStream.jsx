@@ -28,6 +28,7 @@ import WebApi from '../web';
 import {getSettings} from '../store/settingStore';
 import {useTranslation} from 'react-i18next';
 import webRTCClient from '../webrtc';
+import RelayClient from '../webrtc/RelayClient';
 import {debugFactory} from '../utils/debug';
 import {GAMEPAD_MAPING} from '../common';
 import {XBOX_360_GAMEPAD_MAPING} from '../common/usbGamepadMaping';
@@ -106,6 +107,7 @@ function NativeStreamScreen({navigation, route}) {
   const [webrtcClient, setWebrtcClient] = React.useState(undefined);
   const [remote, setRemote] = React.useState(null);
   const remoteStream = React.useRef(null);
+  const relayClient = React.useRef(null);
   const keepaliveInterval = React.useRef(null);
   const performanceInterval = React.useRef(null);
   const connectStateRef = React.useRef('');
@@ -606,6 +608,12 @@ function NativeStreamScreen({navigation, route}) {
           remoteStream.current = new MediaStream();
         }
         remoteStream.current.addTrack(track, remoteStream.current);
+
+        // Forward track to relay server if enabled
+        if (relayClient.current && _settings.relay_enabled) {
+          log.info(`[Relay] Forwarding ${track.kind} track to relay server`);
+          relayClient.current.addTrack(track, remoteStream.current);
+        }
       });
 
       webrtcClient.setSdpHandler((client, offer) => {
@@ -631,6 +639,50 @@ function NativeStreamScreen({navigation, route}) {
           setLoadingText(`${t(CONNECTED)}`);
           setLoading(false);
           isConnected.current = true;
+
+          // Initialize relay client if enabled
+          if (_settings.relay_enabled && _settings.relay_server_url) {
+            log.info('[Relay] Initializing relay client');
+            const stunServers = _settings.relay_stun_servers
+              ? _settings.relay_stun_servers.split(',').map(s => s.trim())
+              : [];
+
+            relayClient.current = new RelayClient(
+              {
+                url: _settings.relay_server_url,
+                enabled: true,
+                stunServers,
+              },
+              {
+                onConnected: () => {
+                  log.info('[Relay] Connected to relay server');
+                  ToastAndroid.show(
+                    'Relay: Connected to server',
+                    ToastAndroid.SHORT,
+                  );
+                },
+                onDisconnected: () => {
+                  log.warn('[Relay] Disconnected from relay server');
+                },
+                onError: error => {
+                  log.error('[Relay] Error:', error);
+                  ToastAndroid.show(`Relay error: ${error}`, ToastAndroid.LONG);
+                },
+                onStateChange: state => {
+                  log.info('[Relay] Connection state:', state);
+                },
+              },
+            );
+
+            relayClient.current
+              .init()
+              .then(() => {
+                log.info('[Relay] Relay client initialized successfully');
+              })
+              .catch(error => {
+                log.error('[Relay] Failed to initialize relay client:', error);
+              });
+          }
 
           // Alway show virtual gamepad
           if (_settings.show_virtual_gamead) {
@@ -832,6 +884,14 @@ function NativeStreamScreen({navigation, route}) {
         const dest = route.params?.streamType === 'cloud' ? 'Cloud' : 'Home';
         setLoading(false);
         webrtcClient && webrtcClient.close();
+
+        // Close relay client if active
+        if (relayClient.current) {
+          log.info('[Relay] Closing relay connection');
+          relayClient.current.close();
+          relayClient.current = null;
+        }
+
         streamApi
           .stopStream()
           .then(() => {
