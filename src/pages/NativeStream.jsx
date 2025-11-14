@@ -28,7 +28,7 @@ import WebApi from '../web';
 import {getSettings} from '../store/settingStore';
 import {useTranslation} from 'react-i18next';
 import webRTCClient from '../webrtc';
-import RelayClient from '../webrtc/RelayClient';
+import CloudflareRelayClient from '../webrtc/CloudflareRelayClient';
 import {debugFactory} from '../utils/debug';
 import {GAMEPAD_MAPING} from '../common';
 import {XBOX_360_GAMEPAD_MAPING} from '../common/usbGamepadMaping';
@@ -647,9 +647,9 @@ function NativeStreamScreen({navigation, route}) {
               ? _settings.relay_stun_servers.split(',').map(s => s.trim())
               : [];
 
-            relayClient.current = new RelayClient(
+            relayClient.current = new CloudflareRelayClient(
               {
-                url: _settings.relay_server_url,
+                workerUrl: _settings.relay_server_url,
                 enabled: true,
                 stunServers,
               },
@@ -678,6 +678,14 @@ function NativeStreamScreen({navigation, route}) {
               .init()
               .then(() => {
                 log.info('[Relay] Relay client initialized successfully');
+                const viewerUrl = relayClient.current?.getViewerUrl();
+                if (viewerUrl) {
+                  log.info('[Relay] Viewer URL:', viewerUrl);
+                  ToastAndroid.show(
+                    'Relay active. Check logs for viewer URL',
+                    ToastAndroid.LONG,
+                  );
+                }
               })
               .catch(error => {
                 log.error('[Relay] Failed to initialize relay client:', error);

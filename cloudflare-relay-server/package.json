@@ -1,0 +1,24 @@
+{
+  "name": "xbox-relay-server",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for relaying Xbox gameplay streams using Realtime SFU",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "webrtc",
+    "sfu",
+    "streaming"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "wrangler": "^3.94.0"
+  }
+}

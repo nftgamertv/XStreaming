@@ -17,10 +17,10 @@ const relay = [
   {
     name: 'relay_server_url',
     type: 'text',
-    title: 'Relay Server URL',
+    title: 'Cloudflare Worker URL',
     description:
-      'WebSocket signaling server URL (e.g., ws://your-server.com:8080 or wss://your-server.com)',
-    placeholder: 'ws://your-server.com:8080',
+      'Cloudflare Worker URL for relay server (e.g., https://xbox-relay.yourdomain.workers.dev)',
+    placeholder: 'https://xbox-relay.yourdomain.workers.dev',
   },
   {
     name: 'relay_stun_servers',
